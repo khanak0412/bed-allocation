@@ -1,0 +1,667 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bed Pulse | Online Hospital Bed-Allocation & Referral Benchmark</title>
+  
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- Leaflet Map CSS & JS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#ecfeff',
+              100: '#cffafe',
+              500: '#06b6d4',
+              600: '#0891b2',
+              700: '#0e7490',
+              900: '#164e63',
+            },
+            acuity1: '#059669',
+            acuity2: '#d97706',
+            acuity3: '#e11d48',
+          }
+        }
+      }
+    }
+  </script>
+  <link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body class="min-h-screen flex flex-col antialiased selection:bg-cyan-500 selection:text-white bg-grid-pattern">
+
+  <div class="ambient-orb-1"></div>
+  <div class="ambient-orb-2"></div>
+  <div class="ambient-orb-3"></div>
+  <canvas id="ambient-canvas"></canvas>
+
+  <!-- TOP HEADER -->
+  <header class="sticky top-0 z-40 border-b border-slate-200/80 glass-panel">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-4">
+      <div class="flex items-center gap-3">
+        <div class="relative h-11 w-11 rounded-2xl bg-gradient-to-tr from-cyan-600 via-blue-600 to-indigo-600 flex items-center justify-center shadow-lg shadow-cyan-600/30 overflow-hidden group">
+          <i data-lucide="activity" class="w-6 h-6 text-white transition-transform group-hover:scale-110"></i>
+          <span class="absolute inset-0 bg-white/20 opacity-0 group-hover:opacity-100 transition-opacity"></span>
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="font-extrabold text-xl text-slate-900 tracking-tight flex items-center gap-1.5">
+              Bed Pulse
+              <span class="inline-flex h-2 w-2 rounded-full bg-cyan-500 animate-ping"></span>
+            </h1>
+            <span class="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-gradient-to-r from-cyan-50 to-blue-50 text-cyan-800 border border-cyan-300/80 shadow-2xs">
+              PCG64 STREAM
+            </span>
+          </div>
+          <p class="text-xs text-slate-500 font-medium">Online Markovian Bed-Allocation Policy & Divert Network</p>
+        </div>
+      </div>
+
+      <div class="flex items-center flex-wrap gap-2 sm:gap-3">
+        <div class="flex items-center bg-white/95 border border-slate-200/90 rounded-xl px-3 py-1.5 shadow-xs">
+          <span class="text-xs text-slate-500 mr-2 flex items-center gap-1.5 font-medium">
+            <i data-lucide="clock" class="w-3.5 h-3.5 text-cyan-600"></i> Sim Time:
+          </span>
+          <span id="display-sim-time" class="font-mono text-cyan-700 font-bold text-sm tracking-tight">00:00.0</span>
+          <span id="display-event-step" class="ml-2 text-[10px] font-mono text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">Evt #0</span>
+        </div>
+
+        <div class="flex items-center bg-white/95 border border-slate-200/90 rounded-xl p-1 gap-1 shadow-xs">
+          <button id="btn-play" onclick="togglePlay()" class="px-3 py-1.5 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all shadow-sm">
+            <i id="btn-play-icon" data-lucide="play" class="w-3.5 h-3.5"></i>
+            <span id="btn-play-text">Start</span>
+          </button>
+          <button onclick="stepSimulation()" title="Step single discrete event" class="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs transition">
+            <i data-lucide="skip-forward" class="w-3.5 h-3.5"></i>
+          </button>
+          <div class="h-4 w-px bg-slate-200 mx-0.5"></div>
+          <button onclick="setSimSpeed(1)" class="speed-btn px-2 py-1 text-xs rounded-md font-mono text-slate-500 hover:text-slate-900 transition" data-speed="1">1x</button>
+          <button onclick="setSimSpeed(5)" class="speed-btn px-2 py-1 text-xs rounded-md font-mono text-slate-500 hover:text-slate-900 transition" data-speed="5">5x</button>
+          <button onclick="setSimSpeed(25)" class="speed-btn px-2 py-1 text-xs rounded-md font-mono text-cyan-800 font-bold bg-cyan-100/70 border border-cyan-300 transition" data-speed="25">25x</button>
+          <button onclick="runFastSimulation()" title="Fast forward 500 arrivals to completion" class="px-3 py-1.5 bg-gradient-to-r from-purple-50 to-indigo-50 hover:from-purple-100 hover:to-indigo-100 text-purple-700 border border-purple-200/90 rounded-lg text-xs font-bold transition flex items-center gap-1 shadow-2xs">
+            ⚡ Instant Run
+          </button>
+          <button onclick="resetSimulation()" title="Reset simulation with seed" class="px-2 py-1.5 bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-600 rounded-lg text-xs transition">
+            <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i>
+          </button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- NAVIGATION TABS -->
+  <nav class="border-b border-slate-200/80 bg-white/70 backdrop-blur-md px-4 sm:px-6 shadow-xs relative z-20">
+    <div class="max-w-7xl mx-auto flex overflow-x-auto space-x-1 py-2 scrollbar-none">
+      <button onclick="switchTab('tab-dashboard')" id="tab-btn-tab-dashboard" class="tab-btn active px-4 py-2 text-xs font-bold rounded-xl flex items-center gap-2 text-cyan-800 bg-cyan-100/60 border border-cyan-300 shadow-xs">
+        <i data-lucide="layout-dashboard" class="w-4 h-4"></i> Dashboard & Scoring
+      </button>
+      <button onclick="switchTab('tab-ward')" id="tab-btn-tab-ward" class="tab-btn px-4 py-2 text-xs font-bold rounded-xl flex items-center gap-2 text-slate-600 hover:text-slate-900 hover:bg-white/80 transition">
+        <i data-lucide="grid" class="w-4 h-4"></i> Live Ward Map (45 Beds)
+      </button>
+      <button onclick="switchTab('tab-hospitals')" id="tab-btn-tab-hospitals" class="tab-btn px-4 py-2 text-xs font-bold rounded-xl flex items-center gap-2 text-slate-600 hover:text-slate-900 hover:bg-white/80 transition">
+        <i data-lucide="ambulance" class="w-4 h-4"></i> Nearest Hospital Divert & Map Radar
+      </button>
+      <button onclick="switchTab('tab-ai')" id="tab-btn-tab-ai" class="tab-btn px-4 py-2 text-xs font-bold rounded-xl flex items-center gap-2 text-slate-600 hover:text-slate-900 hover:bg-white/80 transition">
+        <i data-lucide="sparkles" class="w-4 h-4"></i> AI Triage & Advisor
+      </button>
+      <button onclick="switchTab('tab-code')" id="tab-btn-tab-code" class="tab-btn px-4 py-2 text-xs font-bold rounded-xl flex items-center gap-2 text-slate-600 hover:text-slate-900 hover:bg-white/80 transition">
+        <i data-lucide="code-2" class="w-4 h-4"></i> Python Submission Source
+      </button>
+    </div>
+  </nav>
+
+  <!-- MAIN VIEWPORT -->
+  <main class="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 space-y-6 relative z-10">
+
+    <!-- TAB 1: DASHBOARD & SCORING METRICS -->
+    <div id="tab-dashboard" class="tab-content space-y-6">
+      <div class="glass-panel p-6 rounded-3xl relative overflow-hidden">
+        <div class="overflow-hidden absolute top-0 left-0 right-0 h-0.5 pointer-events-none">
+          <div class="pulse-line"></div>
+        </div>
+
+        <div class="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 border-b border-slate-200/80 pb-4 mb-4">
+          <div>
+            <div class="flex items-center gap-2">
+              <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-300 shadow-2xs">
+                OFFICIAL JUDGING FORMULA
+              </span>
+              <span class="text-xs text-slate-500 font-medium">Seed: <code id="display-seed" class="text-cyan-700 font-mono font-bold">20260911</code> (NumPy PCG64 Stream)</span>
+            </div>
+            <h2 class="text-2xl font-extrabold text-slate-900 mt-1.5 tracking-tight">
+              Multi-Objective Score: <span id="metric-total-score" class="text-3xl text-cyan-600 font-mono font-black">0.00</span> / 100.00 pts
+            </h2>
+          </div>
+          <div class="flex items-center gap-4 bg-white/70 border border-slate-200/80 px-4 py-2 rounded-2xl shadow-xs">
+            <div class="text-right">
+              <div class="text-[11px] text-slate-500 font-medium uppercase tracking-wider">Arrivals</div>
+              <div class="text-sm font-bold font-mono text-slate-800"><span id="metric-processed-arrivals">0</span> / 500</div>
+            </div>
+            <div class="h-7 w-px bg-slate-200"></div>
+            <div class="text-right">
+              <div class="text-[11px] text-slate-500 font-medium uppercase tracking-wider">Occupancy</div>
+              <div class="text-sm font-bold font-mono text-cyan-600"><span id="metric-active-occupancy">0</span> / 45 Beds</div>
+            </div>
+            <div class="h-7 w-px bg-slate-200"></div>
+            <div class="text-right">
+              <div class="text-[11px] text-slate-500 font-medium uppercase tracking-wider">Queue</div>
+              <div class="text-sm font-bold font-mono text-amber-600"><span id="metric-queue-length">0</span> wait</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5">
+          <div class="glass-card p-4 rounded-2xl border border-slate-200/90">
+            <div class="flex justify-between items-center text-xs text-slate-500 font-medium mb-1">
+              <span>Weighted Wait</span>
+              <span class="text-cyan-700 font-bold bg-cyan-50 px-2 py-0.5 rounded-full border border-cyan-200">45 Pts</span>
+            </div>
+            <div class="text-xl font-bold font-mono text-slate-900 flex items-baseline gap-1">
+              <span id="metric-pts-wait">0.00</span>
+              <span class="text-xs text-slate-400 font-normal">pts</span>
+            </div>
+            <div class="mt-1 text-[11px] font-mono text-slate-500">
+              U<sub>wait</sub>: <span id="metric-u-wait" class="text-cyan-700 font-bold">0.0000</span>
+            </div>
+            <div class="w-full bg-slate-100 h-1.5 rounded-full mt-2.5 overflow-hidden">
+              <div id="bar-pts-wait" class="bg-gradient-to-r from-cyan-500 to-blue-500 h-full rounded-full transition-all duration-300" style="width: 0%"></div>
+            </div>
+          </div>
+
+          <div class="glass-card p-4 rounded-2xl border border-slate-200/90">
+            <div class="flex justify-between items-center text-xs text-slate-500 font-medium mb-1">
+              <span>Critical Wait</span>
+              <span class="text-rose-700 font-bold bg-rose-50 px-2 py-0.5 rounded-full border border-rose-200">20 Pts</span>
+            </div>
+            <div class="text-xl font-bold font-mono text-slate-900 flex items-baseline gap-1">
+              <span id="metric-pts-critical">0.00</span>
+              <span class="text-xs text-slate-400 font-normal">pts</span>
+            </div>
+            <div class="mt-1 text-[11px] font-mono text-slate-500">
+              U<sub>crit</sub>: <span id="metric-u-critical" class="text-rose-600 font-bold">1.0000</span>
+            </div>
+            <div class="w-full bg-slate-100 h-1.5 rounded-full mt-2.5 overflow-hidden">
+              <div id="bar-pts-critical" class="bg-gradient-to-r from-rose-500 to-pink-500 h-full rounded-full transition-all duration-300" style="width: 100%"></div>
+            </div>
+          </div>
+
+          <div class="glass-card p-4 rounded-2xl border border-slate-200/90">
+            <div class="flex justify-between items-center text-xs text-slate-500 font-medium mb-1">
+              <span>Rejection (Timeout)</span>
+              <span class="text-amber-700 font-bold bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">15 Pts</span>
+            </div>
+            <div class="text-xl font-bold font-mono text-slate-900 flex items-baseline gap-1">
+              <span id="metric-pts-reject">0.00</span>
+              <span class="text-xs text-slate-400 font-normal">pts</span>
+            </div>
+            <div class="mt-1 text-[11px] font-mono text-slate-500">
+              U<sub>rej</sub>: <span id="metric-u-reject" class="text-amber-700 font-bold">1.0000</span> (<span id="metric-rejected-count" class="text-rose-600 font-bold">0</span> rej)
+            </div>
+            <div class="w-full bg-slate-100 h-1.5 rounded-full mt-2.5 overflow-hidden">
+              <div id="bar-pts-reject" class="bg-gradient-to-r from-amber-400 to-orange-500 h-full rounded-full transition-all duration-300" style="width: 100%"></div>
+            </div>
+          </div>
+
+          <div class="glass-card p-4 rounded-2xl border border-slate-200/90">
+            <div class="flex justify-between items-center text-xs text-slate-500 font-medium mb-1">
+              <span>Specialized Cap.</span>
+              <span class="text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">15 Pts</span>
+            </div>
+            <div class="text-xl font-bold font-mono text-slate-900 flex items-baseline gap-1">
+              <span id="metric-pts-specialized">0.00</span>
+              <span class="text-xs text-slate-400 font-normal">pts</span>
+            </div>
+            <div class="mt-1 text-[11px] font-mono text-slate-500">
+              U<sub>spec</sub>: <span id="metric-u-specialized" class="text-emerald-700 font-bold">1.0000</span> (<span id="metric-avoidable-count" class="text-amber-700 font-bold">0</span> avoid)
+            </div>
+            <div class="w-full bg-slate-100 h-1.5 rounded-full mt-2.5 overflow-hidden">
+              <div id="bar-pts-specialized" class="bg-gradient-to-r from-emerald-400 to-teal-500 h-full rounded-full transition-all duration-300" style="width: 100%"></div>
+            </div>
+          </div>
+
+          <div class="glass-card p-4 rounded-2xl border border-slate-200/90 col-span-2 sm:col-span-1">
+            <div class="flex justify-between items-center text-xs text-slate-500 font-medium mb-1">
+              <span>Reproducibility</span>
+              <span class="text-indigo-700 font-bold bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-200">5 Pts</span>
+            </div>
+            <div class="text-xl font-bold font-mono text-slate-900 flex items-baseline gap-1">
+              <span id="metric-pts-runtime">5.00</span>
+              <span class="text-xs text-slate-400 font-normal">pts</span>
+            </div>
+            <div class="mt-1 text-[11px] font-mono text-emerald-700 flex items-center gap-1 font-semibold">
+              <i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i> Non-anticipative
+            </div>
+            <div class="w-full bg-slate-100 h-1.5 rounded-full mt-2.5 overflow-hidden">
+              <div class="bg-indigo-500 h-full rounded-full" style="width: 100%"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Live Queue & Charts Grid -->
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div class="glass-panel p-5 rounded-3xl flex flex-col h-[440px]">
+          <div class="flex items-center justify-between pb-3 border-b border-slate-200/80">
+            <div class="flex items-center gap-2">
+              <div class="w-7 h-7 rounded-lg bg-cyan-50 border border-cyan-200 flex items-center justify-center text-cyan-600">
+                <i data-lucide="users" class="w-4 h-4"></i>
+              </div>
+              <h3 class="font-bold text-sm text-slate-900">Active Waiting Queue</h3>
+            </div>
+            <span id="queue-badge-count" class="px-2.5 py-0.5 rounded-full text-xs font-mono bg-cyan-100/80 text-cyan-800 border border-cyan-300 font-bold">0 waiting</span>
+          </div>
+
+          <div class="my-2.5 p-2.5 bg-slate-50/90 rounded-xl text-[11px] text-slate-500 flex items-center justify-between border border-slate-200">
+            <span>Sort Priority: <b class="text-cyan-800 font-bold">Urgency Index</b> (Weight × Wait)</span>
+            <span class="text-[10px] font-mono text-slate-400">Max Cap: 240m</span>
+          </div>
+
+          <div id="queue-container" class="flex-1 overflow-y-auto space-y-2 pr-1">
+            <div class="h-full flex flex-col items-center justify-center text-center p-6 text-slate-400">
+              <i data-lucide="inbox" class="w-8 h-8 stroke-1 mb-2"></i>
+              <p class="text-xs">Queue is currently empty. Press "Start" to simulate arrivals.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="glass-panel p-5 rounded-3xl flex flex-col h-[440px] lg:col-span-2">
+          <div class="flex items-center justify-between pb-3 border-b border-slate-200/80">
+            <div class="flex items-center gap-2">
+              <div class="w-7 h-7 rounded-lg bg-indigo-50 border border-indigo-200 flex items-center justify-center text-indigo-600">
+                <i data-lucide="trending-up" class="w-4 h-4"></i>
+              </div>
+              <h3 class="font-bold text-sm text-slate-900">Live Bed Occupancy Dynamics</h3>
+            </div>
+            <div class="flex items-center gap-3 text-xs font-semibold text-slate-600 bg-white/70 px-3 py-1 rounded-full border border-slate-200">
+              <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span> Gen (30)</span>
+              <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-amber-500"></span> Mon (10)</span>
+              <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-rose-500"></span> Crit (5)</span>
+            </div>
+          </div>
+          <div class="flex-1 relative mt-3">
+            <canvas id="chart-occupancy"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- Live Event Log Stream -->
+      <div class="glass-panel p-5 rounded-3xl">
+        <div class="flex flex-wrap items-center justify-between pb-3 border-b border-slate-200/80 gap-2">
+          <div class="flex items-center gap-2">
+            <div class="w-7 h-7 rounded-lg bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-600">
+              <i data-lucide="list-collapse" class="w-4 h-4"></i>
+            </div>
+            <h3 class="font-bold text-sm text-slate-900">Online Policy Decision & Event Stream</h3>
+          </div>
+          <div class="flex items-center gap-2">
+            <button onclick="downloadEventLogCSV()" class="px-3.5 py-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-xl text-xs flex items-center gap-1.5 transition shadow-2xs font-bold">
+              <i data-lucide="download" class="w-3.5 h-3.5"></i> Export CSV Log
+            </button>
+            <button onclick="clearEventLogUI()" class="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-xs font-medium">
+              Clear
+            </button>
+          </div>
+        </div>
+        <div id="event-log-container" class="mt-3 font-mono text-xs max-h-56 overflow-y-auto space-y-1.5 pr-1 bg-white/60 p-3 rounded-2xl border border-slate-200/80 shadow-inner">
+          <div class="text-slate-400 italic">No events triggered yet. Click Start or Step to begin.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 2: LIVE WARD MAP -->
+    <div id="tab-ward" class="tab-content hidden space-y-6">
+      <div class="glass-panel p-6 rounded-3xl">
+        <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between pb-4 border-b border-slate-200/80 gap-3">
+          <div>
+            <h2 class="text-lg font-bold text-slate-900 flex items-center gap-2">
+              <i data-lucide="hospital" class="w-5 h-5 text-cyan-600"></i> Hospital Ward Capacity Matrix (45 Total Beds)
+            </h2>
+            <p class="text-xs text-slate-500">Hierarchical compatibility: L1 can use Gen/Mon/Crit; L2 can use Mon/Crit; L3 restricted to Crit.</p>
+          </div>
+          <div class="flex items-center gap-3 font-mono text-xs font-bold">
+            <span class="px-3 py-1 rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-300">30 General</span>
+            <span class="px-3 py-1 rounded-xl bg-amber-50 text-amber-800 border border-amber-300">10 Monitored</span>
+            <span class="px-3 py-1 rounded-xl bg-rose-50 text-rose-800 border border-rose-300">5 Critical</span>
+          </div>
+        </div>
+
+        <div class="mt-6">
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="text-sm font-bold text-rose-700 flex items-center gap-2">
+              <span class="w-2.5 h-2.5 rounded-full bg-rose-500"></span>
+              Intensive Critical Care Unit (5 Beds) &bull; Median Stay: 240 min
+            </h3>
+            <span id="label-crit-count" class="text-xs font-mono text-slate-500 font-bold">0/5 Occupied</span>
+          </div>
+          <div id="ward-critical-grid" class="grid grid-cols-2 sm:grid-cols-5 gap-3"></div>
+        </div>
+
+        <div class="mt-8">
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="text-sm font-bold text-amber-700 flex items-center gap-2">
+              <span class="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
+              Step-down Monitored Telemetry Unit (10 Beds) &bull; Median Stay: 180 min
+            </h3>
+            <span id="label-mon-count" class="text-xs font-mono text-slate-500 font-bold">0/10 Occupied</span>
+          </div>
+          <div id="ward-monitored-grid" class="grid grid-cols-2 sm:grid-cols-5 gap-3"></div>
+        </div>
+
+        <div class="mt-8">
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="text-sm font-bold text-emerald-700 flex items-center gap-2">
+              <span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+              General Medical-Surgical Ward (30 Beds) &bull; Median Stay: 120 min
+            </h3>
+            <span id="label-gen-count" class="text-xs font-mono text-slate-500 font-bold">0/30 Occupied</span>
+          </div>
+          <div id="ward-general-grid" class="grid grid-cols-2 sm:grid-cols-6 md:grid-cols-10 gap-2"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 3: HOSPITAL DIVERT RADAR -->
+    <div id="tab-hospitals" class="tab-content hidden space-y-6">
+      <div class="glass-panel p-6 rounded-3xl">
+        <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between pb-4 border-b border-slate-200/80 gap-3">
+          <div>
+            <h2 class="text-lg font-bold text-slate-900 flex items-center gap-2">
+              <i data-lucide="navigation" class="w-5 h-5 text-cyan-600"></i> Regional Hospital Emergency Divert Network & Google Maps Radar
+            </h2>
+            <p class="text-xs text-slate-500">Automated triage routing for rejected patients reaching the 240-minute wait cap with live navigation and Google Maps directions.</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="text-xs text-slate-500 font-medium">Base Hub:</span>
+            <span class="px-3 py-1 bg-cyan-50 text-cyan-900 font-mono text-xs rounded-xl border border-cyan-300 font-bold shadow-2xs">
+              Jaipur Command (26.9124° N, 75.7873° E)
+            </span>
+          </div>
+        </div>
+
+        <div class="mt-5 glass-card p-4 rounded-2xl border border-slate-200">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between pb-3 mb-3 border-b border-slate-200/80 gap-2">
+            <div class="flex items-center gap-2 text-xs font-bold text-slate-800">
+              <span class="relative flex h-2.5 w-2.5">
+                <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-500 opacity-75"></span>
+                <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-cyan-600"></span>
+              </span>
+              <span>Live Emergency Routing & Transit Grid</span>
+            </div>
+            <div class="flex items-center gap-2 text-xs text-slate-500 font-medium">
+              <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-indigo-600"></span> Base Hospital</span>
+              <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-emerald-600"></span> Referral Centers</span>
+            </div>
+          </div>
+          <div id="googleMapContainer" class="w-full bg-slate-100 border border-slate-200/80 shadow-inner"></div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mt-5" id="hospital-network-cards"></div>
+
+        <div class="mt-8">
+          <div class="flex items-center justify-between pb-3 border-b border-slate-200/80">
+            <h3 class="text-sm font-bold text-slate-900 flex items-center gap-2">
+              <i data-lucide="alert-triangle" class="w-4 h-4 text-amber-600"></i>
+              Diverted Transfer Queue (Auto-Referred after 240 min)
+            </h3>
+            <span id="diverted-counter" class="text-xs font-mono text-slate-500 font-bold">0 Patients Diverted</span>
+          </div>
+
+          <div id="diverted-patients-table" class="mt-3 overflow-x-auto">
+            <table class="w-full text-left text-xs border-collapse">
+              <thead>
+                <tr class="border-b border-slate-200 text-slate-500 font-mono uppercase text-[10px]">
+                  <th class="py-2.5 px-3">Patient ID</th>
+                  <th class="py-2.5 px-3">Acuity</th>
+                  <th class="py-2.5 px-3">Total Wait</th>
+                  <th class="py-2.5 px-3">Diverted Hospital</th>
+                  <th class="py-2.5 px-3">Distance & ETA</th>
+                  <th class="py-2.5 px-3 text-right">Emergency Dispatch & Navigation</th>
+                </tr>
+              </thead>
+              <tbody id="diverted-list-body" class="divide-y divide-slate-100 font-mono">
+                <tr>
+                  <td colspan="6" class="py-8 text-center text-slate-400 font-sans text-xs">
+                    No patients have been rejected or diverted yet. (System maintains &lt; 240m wait).
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 4: AI TRIAGE ADVISOR -->
+    <div id="tab-ai" class="tab-content hidden space-y-6">
+      <div class="glass-panel p-6 rounded-3xl">
+        <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between pb-4 border-b border-slate-200/80 gap-3">
+          <div>
+            <div class="flex items-center gap-2">
+              <h2 class="text-lg font-bold text-slate-900 flex items-center gap-2">
+                <i data-lucide="brain-circuit" class="w-5 h-5 text-cyan-600"></i>
+                AI Clinical Bed Triage & Optimization Assistant
+              </h2>
+              <span class="px-2.5 py-0.5 text-[10px] font-bold rounded-full bg-purple-100 text-purple-800 border border-purple-200 font-mono">GEMINI 2.5 FLASH</span>
+            </div>
+            <p class="text-xs text-slate-500">Synthesizes discrete queue state, Markovian opportunity costs, and generates instant WhatsApp clinical referral handoffs.</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <input type="password" id="gemini-api-key" placeholder="Enter Gemini API Key..." class="px-3.5 py-1.5 bg-white border border-slate-200 text-xs rounded-xl text-slate-800 placeholder-slate-400 w-64 focus:outline-none focus:border-cyan-500 shadow-xs">
+            <button onclick="saveApiKeyFromInput()" class="px-3.5 py-1.5 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl text-xs font-semibold shadow-xs transition">Save</button>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">
+          <div class="space-y-4">
+            <div class="glass-card p-4 rounded-2xl border border-slate-200 space-y-3">
+              <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider">Analysis Mode</label>
+              <select id="ai-analysis-mode" class="w-full bg-white border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800 focus:outline-none focus:border-cyan-500 font-mono shadow-xs">
+                <option value="policy_advisory">1. Capacity Bottleneck & Reservation Policy Audit</option>
+                <option value="patient_triage">2. Selected Patient Priority & Upgrade Recommendation</option>
+                <option value="transfer_handoff">3. Inter-Hospital Divert Clinical Note Generator</option>
+                <option value="scoring_optimizer">4. 100-Point Benchmark Utility Maximization Strategy</option>
+              </select>
+
+              <button onclick="runAIAssistant()" id="btn-run-ai" class="w-full py-2.5 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 shadow-sm transition">
+                <i data-lucide="sparkles" class="w-4 h-4"></i> Generate Clinical AI Assessment
+              </button>
+            </div>
+
+            <div class="glass-card p-4 rounded-2xl border border-slate-200 space-y-2 text-xs">
+              <h4 class="font-bold text-slate-800">Live Context Snapshot for Model</h4>
+              <div class="space-y-1.5 text-slate-600 font-mono text-[11px]">
+                <div class="flex justify-between"><span>Current Queue:</span> <span id="ai-ctx-queue" class="text-slate-900 font-bold">0</span></div>
+                <div class="flex justify-between"><span>Gen / Mon / Crit Free:</span> <span id="ai-ctx-beds" class="text-cyan-700 font-bold">30 / 10 / 5</span></div>
+                <div class="flex justify-between"><span>Avoidable Spillover:</span> <span id="ai-ctx-avoidable" class="text-amber-700 font-bold">0</span></div>
+                <div class="flex justify-between"><span>Timeout Rejections:</span> <span id="ai-ctx-rejections" class="text-rose-700 font-bold">0</span></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="glass-card p-5 rounded-2xl border border-slate-200 lg:col-span-2 flex flex-col h-[420px]">
+            <div class="flex items-center justify-between pb-2 border-b border-slate-200">
+              <span class="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                <i data-lucide="bot" class="w-4 h-4 text-purple-600"></i> AI Clinical Insights & Advisory
+              </span>
+              <button onclick="copyAIText()" class="text-xs text-slate-500 hover:text-cyan-700 flex items-center gap-1">
+                <i data-lucide="copy" class="w-3.5 h-3.5"></i> Copy
+              </button>
+            </div>
+            <div id="ai-response-box" class="flex-1 overflow-y-auto mt-3 pr-2 text-xs leading-relaxed text-slate-700 space-y-3">
+              <p class="text-slate-400 italic">Click "Generate Clinical AI Assessment" to run Gemini-powered real-time capacity and triage reasoning on the active simulator state.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 5: PYTHON SOURCE -->
+    <div id="tab-code" class="tab-content hidden space-y-6">
+      <div class="glass-panel p-6 rounded-3xl">
+        <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between pb-4 border-b border-slate-200/80 gap-3">
+          <div>
+            <h2 class="text-lg font-bold text-slate-900 flex items-center gap-2">
+              <i data-lucide="file-code" class="w-5 h-5 text-cyan-600"></i>
+              Offline Evaluation Python Submission Code
+            </h2>
+            <p class="text-xs text-slate-500">Production-ready, standalone Python Discrete-Event Simulator with exact PCG64 seed (20260911) matching the competition prompt.</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <button onclick="copyPythonCode()" class="px-3.5 py-1.5 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition shadow-sm">
+              <i data-lucide="copy" class="w-3.5 h-3.5"></i> Copy Source
+            </button>
+            <button onclick="downloadPythonFile()" class="px-3.5 py-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-xl text-xs font-bold flex items-center gap-1.5 transition shadow-sm">
+              <i data-lucide="download" class="w-3.5 h-3.5"></i> Download .py
+            </button>
+          </div>
+        </div>
+
+        <div class="mt-4 relative">
+          <pre id="python-source-container" class="bg-slate-900 text-cyan-300 p-5 rounded-2xl text-xs font-mono overflow-x-auto max-h-[550px] border border-slate-800 leading-relaxed shadow-inner"></pre>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- FLOATING GEMINI COPILOT LAUNCHER -->
+  <div id="ai-chat-launcher" class="fixed bottom-6 right-6 z-50">
+    <button onclick="toggleAIChatbot()" id="ai-chat-toggle-btn" class="group relative flex items-center gap-2.5 px-4 py-3 bg-gradient-to-r from-cyan-600 via-indigo-600 to-purple-600 hover:from-cyan-500 hover:to-purple-500 text-white rounded-full shadow-2xl shadow-cyan-600/30 transition-all transform hover:scale-105 active:scale-95 border border-white/40">
+      <div class="relative">
+        <i data-lucide="bot" class="w-5 h-5"></i>
+        <span class="absolute -top-1 -right-1 flex h-2.5 w-2.5">
+          <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+          <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-400"></span>
+        </span>
+      </div>
+      <span class="text-xs font-bold font-sans tracking-wide">Gemini Triage Copilot</span>
+    </button>
+  </div>
+
+  <!-- FLOATING CHATBOT WINDOW -->
+  <div id="ai-chatbot-window" class="fixed bottom-20 right-6 z-50 w-96 max-w-[calc(100vw-2rem)] h-[560px] max-h-[calc(100vh-6rem)] hidden flex-col glass-panel border border-slate-200/90 rounded-3xl shadow-2xl overflow-hidden">
+    <div class="p-3.5 border-b border-slate-200 bg-white/90 flex items-center justify-between">
+      <div class="flex items-center gap-2.5">
+        <div class="w-8 h-8 rounded-xl bg-gradient-to-tr from-cyan-600 to-indigo-600 flex items-center justify-center text-white shadow-md shadow-cyan-600/20">
+          <i data-lucide="sparkles" class="w-4 h-4"></i>
+        </div>
+        <div>
+          <div class="flex items-center gap-1.5">
+            <h4 class="text-xs font-bold text-slate-800">Bed Pulse Copilot</h4>
+            <span id="gemini-status-pill" class="px-1.5 py-0.2 rounded text-[9px] font-mono bg-purple-50 text-purple-700 border border-purple-200 font-bold">GEMINI READY</span>
+          </div>
+          <p class="text-[10px] text-slate-500">DES Policy & Clinical Divert Reasoning</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-1 text-slate-400">
+        <button onclick="toggleKeySettingsDrawer()" title="Configure Gemini API Key" class="p-1.5 hover:text-cyan-600 rounded-lg hover:bg-slate-100 transition">
+          <i data-lucide="key" class="w-3.5 h-3.5"></i>
+        </button>
+        <button onclick="clearAIChatHistory()" title="Clear Chat History" class="p-1.5 hover:text-slate-800 rounded-lg hover:bg-slate-100 transition">
+          <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+        </button>
+        <button onclick="toggleAIChatbot()" title="Close Chat" class="p-1.5 hover:text-slate-800 rounded-lg hover:bg-slate-100 transition">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+    </div>
+
+    <div id="chat-api-key-drawer" class="hidden p-3 bg-slate-50 border-b border-slate-200 text-xs space-y-2">
+      <div class="flex items-center justify-between">
+        <span class="text-[11px] font-bold text-slate-700">Gemini API Key Setup</span>
+        <a href="https://aistudio.google.com/apikey" target="_blank" class="text-[10px] text-cyan-600 hover:underline">Get Key &rarr;</a>
+      </div>
+      <div class="flex gap-2">
+        <input type="password" id="drawer-gemini-key" placeholder="AIzaSy..." class="flex-1 bg-white border border-slate-200 rounded-lg px-2.5 py-1 text-xs text-slate-800 outline-none focus:border-cyan-500 shadow-2xs">
+        <button onclick="saveKeyFromDrawer()" class="px-3 py-1 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg text-xs font-semibold shadow-2xs">Save</button>
+      </div>
+    </div>
+
+    <div class="px-3 py-2 border-b border-slate-200/80 bg-slate-50/50 flex items-center gap-1.5 overflow-x-auto text-[10px] font-mono scrollbar-none whitespace-nowrap">
+      <button onclick="sendQuickPrompt('Triage status of waiting queue?')" class="px-2.5 py-1 bg-white hover:bg-cyan-50 hover:text-cyan-700 text-slate-600 rounded-md border border-slate-200 transition shadow-2xs">
+        Queue Triage
+      </button>
+      <button onclick="sendQuickPrompt('How to maximize our 100-pt benchmark score?')" class="px-2.5 py-1 bg-white hover:bg-cyan-50 hover:text-cyan-700 text-slate-600 rounded-md border border-slate-200 transition shadow-2xs">
+        Optimize 100 Pts
+      </button>
+      <button onclick="sendQuickPrompt('Check regional hospital diversion status.')" class="px-2.5 py-1 bg-white hover:bg-cyan-50 hover:text-cyan-700 text-slate-600 rounded-md border border-slate-200 transition shadow-2xs">
+        Divert Network
+      </button>
+    </div>
+
+    <div id="ai-chat-messages" class="flex-1 p-3.5 overflow-y-auto space-y-3 text-xs pr-2">
+      <div class="flex items-start gap-2.5">
+        <div class="w-6 h-6 rounded-full bg-cyan-100 border border-cyan-300 text-cyan-700 flex items-center justify-center shrink-0 mt-0.5">
+          <i data-lucide="bot" class="w-3.5 h-3.5"></i>
+        </div>
+        <div class="p-3 bg-white border border-slate-200 rounded-2xl rounded-tl-sm text-slate-700 leading-relaxed text-[11px] shadow-2xs">
+          Hello! I am your <strong>Bed Pulse Gemini Copilot</strong>. I track discrete queue states, Markovian bed reservation costs, and regional hospital diversions in real-time. How can I assist you?
+        </div>
+      </div>
+    </div>
+
+    <form id="ai-chat-form" onsubmit="handleAIChatSubmit(event)" class="p-2.5 border-t border-slate-200 bg-white/90 flex items-center gap-2">
+      <input type="text" id="ai-chat-input" placeholder="Ask Gemini triage copilot..." class="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-cyan-500 font-sans" autocomplete="off" />
+      <button type="submit" id="ai-chat-send-btn" class="p-2 bg-gradient-to-r from-cyan-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500 text-white rounded-xl shadow-sm transition disabled:opacity-50">
+        <i data-lucide="send" class="w-3.5 h-3.5"></i>
+      </button>
+    </form>
+  </div>
+
+  <!-- WHATSAPP DISPATCH MODAL -->
+  <div id="whatsapp-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm hidden p-4">
+    <div class="glass-panel border border-slate-200 rounded-3xl max-w-lg w-full p-6 space-y-4 shadow-2xl relative">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-200">
+        <div class="flex items-center gap-2 text-emerald-700 font-bold text-sm">
+          <i data-lucide="message-circle" class="w-5 h-5"></i>
+          WhatsApp Emergency Medical Referral Dispatch
+        </div>
+        <button onclick="closeWhatsAppModal()" class="text-slate-400 hover:text-slate-700">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <div class="space-y-3 text-xs">
+        <div>
+          <label class="block text-slate-600 font-medium mb-1">Recipient Phone Number (International format):</label>
+          <input type="text" id="wa-phone-number" value="+919876543210" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 font-mono text-slate-800 focus:outline-none focus:border-emerald-500">
+        </div>
+
+        <div>
+          <label class="block text-slate-600 font-medium mb-1">Generated Dispatch Message:</label>
+          <textarea id="wa-message-body" rows="6" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 font-mono text-slate-700 text-xs focus:outline-none focus:border-emerald-500"></textarea>
+        </div>
+      </div>
+
+      <div class="flex items-center justify-end gap-3 pt-3 border-t border-slate-200">
+        <button onclick="closeWhatsAppModal()" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold">
+          Cancel
+        </button>
+        <button onclick="openExternalWhatsApp()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs flex items-center gap-2 shadow-sm transition">
+          <i data-lucide="send" class="w-4 h-4"></i> Open WhatsApp Web
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast-container" class="fixed bottom-4 right-4 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+  <!-- Application Modules -->
+  <script src="assets/js/canvas.js"></script>
+  <script src="assets/js/simulator.js"></script>
+  <script src="assets/js/map.js"></script>
+  <script src="assets/js/ai.js"></script>
+  <script src="assets/js/app.js"></script>
+</body>
+</html>
